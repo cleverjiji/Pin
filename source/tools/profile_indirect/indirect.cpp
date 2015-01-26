@@ -111,7 +111,7 @@ VOID Fini(INT32 code, VOID *v)
 	// Write to a file since cout and cerr maybe closed by the application
 	OutFile.setf(ios::hex, ios::basefield);
 	//OutFile.setf(ios::showbase);
-	OutFile<<"IMG NUM="<<image_vec.size()<<endl;
+	OutFile<<"IMG_NUM= "<<image_vec.size()<<endl;
 	for(vector<IMAG_ITEM>::iterator iter = image_vec.begin(); iter!=image_vec.end(); iter++){
 		if((*iter).type == IMG_TYPE_SHAREDLIB){
 			char process_real_path[1024] = "\0";
@@ -122,9 +122,9 @@ VOID Fini(INT32 code, VOID *v)
 		}else
 			OutFile<<setw(2)<<(*iter).image_id<<" "<<(*iter).image_name<<" "<<endl;
 	}
-	OutFile<<"INST NUM="<<indirect_inst_vec.size()<<endl;
+	OutFile<<"INST_NUM= "<<indirect_inst_vec.size()<<endl;
 	for(vector<INDIRECT_INST_ITEM>::iterator iter = indirect_inst_vec.begin(); iter!=indirect_inst_vec.end(); iter++){
-		OutFile<<(*iter).inst_addr<<"("<<(*iter).inst_image_id<<")-->"<<(*iter).target_addr<<"("<<(*iter).target_image_id<<")"<<endl;
+		OutFile<<(*iter).inst_addr<<" ( "<<(*iter).inst_image_id<<" )--> "<<(*iter).target_addr<<" ( "<<(*iter).target_image_id<<" )"<<endl;
 	}
 	OutFile<<"END"<<endl;
 	OutFile.close();
