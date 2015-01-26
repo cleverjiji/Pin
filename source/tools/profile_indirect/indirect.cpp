@@ -34,6 +34,7 @@ END_LEGAL */
 #include <vector>
 #include <iomanip>
 #include <string.h>
+#include <unistd.h>
 
 ofstream OutFile;
 
@@ -48,6 +49,7 @@ vector<INDIRECT_INST_ITEM> indirect_inst_vec;
 
 typedef struct image_item{
 	string image_name;
+	IMG_TYPE type;
 	UINT32 image_id;
 	ADDRINT image_start;
 	ADDRINT image_end;
@@ -70,7 +72,7 @@ BOOL image_is_match(string name, UINT32 id)
 VOID ImageLoad(IMG img, VOID *v)
 {
 	//cout << "Loading " << IMG_Name(img) << ", Image addr=0x" <<hex<< IMG_LowAddress(img) <<"-0x"<<hex<< IMG_HighAddress (img)<<endl;
- 	IMAG_ITEM item = {IMG_Name(img), IMG_Id(img),IMG_LowAddress(img), IMG_HighAddress(img)};
+ 	IMAG_ITEM item = {IMG_Name(img), IMG_Type(img), IMG_Id(img),IMG_LowAddress(img), IMG_HighAddress(img)};
 	image_vec.push_back(item);
 }
 
@@ -108,10 +110,17 @@ VOID Fini(INT32 code, VOID *v)
 {
 	// Write to a file since cout and cerr maybe closed by the application
 	OutFile.setf(ios::hex, ios::basefield);
-	OutFile.setf(ios::showbase);
+	//OutFile.setf(ios::showbase);
 	OutFile<<"IMG NUM="<<image_vec.size()<<endl;
 	for(vector<IMAG_ITEM>::iterator iter = image_vec.begin(); iter!=image_vec.end(); iter++){
-		OutFile<<setw(2)<<(*iter).image_id<<" "<<(*iter).image_name<<" "<<endl;
+		if((*iter).type == IMG_TYPE_SHAREDLIB){
+			char process_real_path[1024] = "\0";
+			UINT32 ret = readlink((*iter).image_name.c_str(), process_real_path, 1024); 
+			if(ret<=0)
+				cerr<<"readlink error!"<<endl;
+			OutFile<<setw(2)<<(*iter).image_id<<" "<<process_real_path<<" "<<endl;
+		}else
+			OutFile<<setw(2)<<(*iter).image_id<<" "<<(*iter).image_name<<" "<<endl;
 	}
 	OutFile<<"INST NUM="<<indirect_inst_vec.size()<<endl;
 	for(vector<INDIRECT_INST_ITEM>::iterator iter = indirect_inst_vec.begin(); iter!=indirect_inst_vec.end(); iter++){
@@ -150,7 +159,7 @@ int main(int argc, char * argv[])
 	else
 		path_end++;
 	
-	sprintf(application_name, "/tmp/%s.log", path_end);
+	sprintf(application_name, "/tmp/%s.indirect.log", path_end);
 	OutFile.open(application_name);
 	
 	// Register Instruction to be called to instrument instructions
