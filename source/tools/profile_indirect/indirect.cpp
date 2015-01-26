@@ -33,6 +33,8 @@ END_LEGAL */
 #include "pin.H"
 #include <vector>
 #include <iomanip>
+#include <string.h>
+
 ofstream OutFile;
 
 typedef struct indirect_inst_item{
@@ -136,13 +138,21 @@ INT32 Usage()
 /*   argc, argv are the entire command line: pin -t <toolname> -- ...    */
 /* ===================================================================== */
 
+char application_name[1000];
 int main(int argc, char * argv[])
 {
 	// Initialize pin
 	if (PIN_Init(argc, argv)) return Usage();
 
-	OutFile.open(KnobOutputFile.Value().c_str());
-
+	char *path_end = strrchr(argv[12],  '/');
+	if(!path_end)
+		path_end = argv[12];
+	else
+		path_end++;
+	
+	sprintf(application_name, "/tmp/%s.log", path_end);
+	OutFile.open(application_name);
+	
 	// Register Instruction to be called to instrument instructions
 	INS_AddInstrumentFunction(Instruction, 0);
 
