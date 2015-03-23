@@ -118,7 +118,10 @@ VOID Fini(INT32 code, VOID *v)
 			UINT32 ret = readlink((*iter).image_name.c_str(), process_real_path, 1024); 
 			if(ret<=0)
 				cerr<<"readlink error!"<<endl;
-			OutFile<<setw(2)<<(*iter).image_id<<" "<<process_real_path<<" "<<endl;
+            if(process_real_path[0]!='\0')
+			    OutFile<<setw(2)<<(*iter).image_id<<" "<<process_real_path<<" "<<endl;
+            else
+                OutFile<<setw(2)<<(*iter).image_id<<" "<<(*iter).image_name.c_str()<<" "<<endl;
 		}else
 			OutFile<<setw(2)<<(*iter).image_id<<" "<<(*iter).image_name<<" "<<endl;
 	}
