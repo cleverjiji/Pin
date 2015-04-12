@@ -35,6 +35,8 @@ END_LEGAL */
 #include <iomanip>
 #include <string.h>
 #include <unistd.h>
+#include <sstream>
+#include <map>
 
 ofstream OutFile;
 
@@ -45,7 +47,9 @@ typedef struct indirect_inst_item{
 	ADDRINT target_addr;
 }INDIRECT_INST_ITEM;
 
+stringstream ss;
 vector<INDIRECT_INST_ITEM> indirect_inst_vec;
+map<string, INDIRECT_INST_ITEM> indirect_inst_map;
 
 typedef struct image_item{
 	string image_name;
@@ -86,7 +90,11 @@ VOID record_target(ADDRINT inst_address, ADDRINT inst_target)
 	if(IMG_Valid(inst_image) && IMG_Valid(inst_target_image)){
 		if(image_is_match(IMG_Name(inst_image), inst_image_id) && image_is_match(IMG_Name(inst_target_image), inst_target_image_id)){
 			INDIRECT_INST_ITEM item = {inst_image_id, inst_target_image_id, inst_address-IMG_LowAddress(inst_image), inst_target-IMG_LowAddress(inst_target_image)};
-			indirect_inst_vec.push_back(item);
+			ss<<item.inst_image_id<<"."<<item.target_image_id<<"."<<item.inst_addr<<"."<<item.target_addr;
+			string key = ss.str();
+			ss.str("");
+			indirect_inst_map.insert(make_pair(key, item));
+			//indirect_inst_vec.push_back(item);
 		}else{
 			cerr<<"image is not match"<<endl;
 		}
@@ -97,7 +105,7 @@ VOID record_target(ADDRINT inst_address, ADDRINT inst_target)
 VOID Instruction(INS ins, VOID *v)
 {
 	// Insert a call to docount before every instruction, no arguments are passed
-	if(INS_IsIndirectBranchOrCall(ins)){
+	if(INS_IsIndirectBranchOrCall(ins) && !INS_IsRet(ins)){
 		INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)record_target, IARG_INST_PTR, IARG_BRANCH_TARGET_ADDR, IARG_END);
 	}
 }
@@ -125,9 +133,14 @@ VOID Fini(INT32 code, VOID *v)
 		}else
 			OutFile<<setw(2)<<(*iter).image_id<<" "<<(*iter).image_name<<" "<<endl;
 	}
-	OutFile<<"INST_NUM= "<<indirect_inst_vec.size()<<endl;
+	/*OutFile<<"INST_NUM= "<<indirect_inst_vec.size()<<endl;
 	for(vector<INDIRECT_INST_ITEM>::iterator iter = indirect_inst_vec.begin(); iter!=indirect_inst_vec.end(); iter++){
 		OutFile<<(*iter).inst_addr<<" ( "<<(*iter).inst_image_id<<" )--> "<<(*iter).target_addr<<" ( "<<(*iter).target_image_id<<" )"<<endl;
+	}*/
+	OutFile<<"INST_NUM= "<<indirect_inst_map.size()<<endl;
+	for(map<string, INDIRECT_INST_ITEM>::iterator iter = indirect_inst_map.begin(); iter!=indirect_inst_map.end(); iter++){
+		INDIRECT_INST_ITEM item = iter->second;
+		OutFile<<item.inst_addr<<" ( "<<item.inst_image_id<<" )--> "<<item.target_addr<<" ( "<<item.target_image_id<<" )"<<endl;
 	}
 	OutFile<<"END"<<endl;
 	OutFile.close();
