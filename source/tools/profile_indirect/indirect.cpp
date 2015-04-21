@@ -38,7 +38,9 @@ END_LEGAL */
 #include <sstream>
 #include <map>
 
-ofstream OutFile;
+#include <stdlib.h>
+
+char application_name[1000];
 
 typedef struct indirect_inst_item{
 	UINT32 inst_image_id;
@@ -48,15 +50,12 @@ typedef struct indirect_inst_item{
 }INDIRECT_INST_ITEM;
 
 stringstream ss;
-vector<INDIRECT_INST_ITEM> indirect_inst_vec;
 map<string, INDIRECT_INST_ITEM> indirect_inst_map;
 
 typedef struct image_item{
 	string image_name;
 	IMG_TYPE type;
 	UINT32 image_id;
-	ADDRINT image_start;
-	ADDRINT image_end;
 }IMAG_ITEM;
 vector<IMAG_ITEM> image_vec;
 
@@ -73,11 +72,39 @@ BOOL image_is_match(string name, UINT32 id)
 	return false;
 }
 
+bool exist_old_log = false;
+vector<IMAG_ITEM> old_image_vec;
+
+BOOL is_match_old_log(IMAG_ITEM new_item)
+{
+	char new_image_name[1024] = "\0";
+	if(new_item.type == IMG_TYPE_SHAREDLIB){
+		UINT32 ret = readlink(new_item.image_name.c_str(), new_image_name, 1024); 
+		if(ret<=0)
+			cerr<<"readlink error!"<<endl;
+		if(new_image_name[0]=='\0')
+			sprintf(new_image_name, "%s", new_item.image_name.c_str());
+	}else
+		sprintf(new_image_name, "%s", new_item.image_name.c_str());
+
+	for(vector<IMAG_ITEM>::iterator it = old_image_vec.begin(); it!=old_image_vec.end(); it++){
+		if(strcmp(new_image_name, (*it).image_name.c_str())==0 && new_item.type==(*it).type && new_item.image_id==(*it).image_id)
+			return true;
+	}
+	return false;
+}
+
 VOID ImageLoad(IMG img, VOID *v)
 {
 	//cout << "Loading " << IMG_Name(img) << ", Image addr=0x" <<hex<< IMG_LowAddress(img) <<"-0x"<<hex<< IMG_HighAddress (img)<<endl;
- 	IMAG_ITEM item = {IMG_Name(img), IMG_Type(img), IMG_Id(img),IMG_LowAddress(img), IMG_HighAddress(img)};
-	image_vec.push_back(item);
+ 	IMAG_ITEM item = {IMG_Name(img), IMG_Type(img), IMG_Id(img)};
+	if(!exist_old_log || is_match_old_log(item))
+		image_vec.push_back(item);
+	else{
+		cerr<<"Do not match old log!"<<endl;
+		abort();
+	}
+		
 }
 
 VOID record_target(ADDRINT inst_address, ADDRINT inst_target)
@@ -94,9 +121,9 @@ VOID record_target(ADDRINT inst_address, ADDRINT inst_target)
 			string key = ss.str();
 			ss.str("");
 			indirect_inst_map.insert(make_pair(key, item));
-			//indirect_inst_vec.push_back(item);
 		}else{
 			cerr<<"image is not match"<<endl;
+			abort();
 		}
 	}
 	PIN_UnlockClient();
@@ -116,6 +143,13 @@ KNOB<string> KnobOutputFile(KNOB_MODE_WRITEONCE, "pintool",
 // This function is called when the application exits
 VOID Fini(INT32 code, VOID *v)
 {
+	if(exist_old_log && old_image_vec.size()!=image_vec.size()){
+		cerr<<"Oh no, old log image num is not match!"<<endl;
+		return ;
+	}
+	
+	ofstream OutFile;
+	OutFile.open(application_name);
 	// Write to a file since cout and cerr maybe closed by the application
 	OutFile.setf(ios::hex, ios::basefield);
 	//OutFile.setf(ios::showbase);
@@ -126,17 +160,14 @@ VOID Fini(INT32 code, VOID *v)
 			UINT32 ret = readlink((*iter).image_name.c_str(), process_real_path, 1024); 
 			if(ret<=0)
 				cerr<<"readlink error!"<<endl;
-            if(process_real_path[0]!='\0')
-			    OutFile<<setw(2)<<(*iter).image_id<<" "<<process_real_path<<" "<<endl;
-            else
-                OutFile<<setw(2)<<(*iter).image_id<<" "<<(*iter).image_name.c_str()<<" "<<endl;
+			
+			if(process_real_path[0]!='\0')
+				OutFile<<setw(2)<<(*iter).image_id<<" "<<process_real_path<<" "<<endl;
+			else
+				OutFile<<setw(2)<<(*iter).image_id<<" "<<(*iter).image_name.c_str()<<" "<<endl;
 		}else
 			OutFile<<setw(2)<<(*iter).image_id<<" "<<(*iter).image_name<<" "<<endl;
 	}
-	/*OutFile<<"INST_NUM= "<<indirect_inst_vec.size()<<endl;
-	for(vector<INDIRECT_INST_ITEM>::iterator iter = indirect_inst_vec.begin(); iter!=indirect_inst_vec.end(); iter++){
-		OutFile<<(*iter).inst_addr<<" ( "<<(*iter).inst_image_id<<" )--> "<<(*iter).target_addr<<" ( "<<(*iter).target_image_id<<" )"<<endl;
-	}*/
 	OutFile<<"INST_NUM= "<<indirect_inst_map.size()<<endl;
 	for(map<string, INDIRECT_INST_ITEM>::iterator iter = indirect_inst_map.begin(); iter!=indirect_inst_map.end(); iter++){
 		INDIRECT_INST_ITEM item = iter->second;
@@ -163,7 +194,45 @@ INT32 Usage()
 /*   argc, argv are the entire command line: pin -t <toolname> -- ...    */
 /* ===================================================================== */
 
-char application_name[1000];
+void read_old_log()
+{
+	ifstream ifs;
+	ifs.open(application_name, ifstream::in);
+	if(ifs.is_open()){
+		old_image_vec.clear();
+		//read head log
+		int image_num = 0;
+		string str_image_num;
+		UINT32 id;
+		ifs>>str_image_num>>image_num;
+		for(int idx=0; idx<image_num; idx++){
+			string image_path, name;
+			ifs>>id>>image_path;
+			IMG_TYPE type = idx==0 ? IMG_TYPE_SHARED : IMG_TYPE_SHAREDLIB;
+			IMAG_ITEM item = {image_path, type, id};
+			old_image_vec.push_back(item);
+		}
+		//read old profile inst information
+		string padding;
+		char c;
+		int inst_num = 0;
+		ifs>>hex>>padding>>inst_num;
+		for(int idx=0; idx<inst_num; idx++){
+			ADDRINT inst, target;
+			UINT32 inst_idx, target_idx;
+			ifs>>hex>>inst>>c>>inst_idx>>padding>>target>>c>>target_idx>>c;
+			INDIRECT_INST_ITEM item = {inst_idx, target_idx, inst, target};
+			ss<<item.inst_image_id<<"."<<item.target_image_id<<"."<<item.inst_addr<<"."<<item.target_addr;
+			string key = ss.str();
+			ss.str("");
+			indirect_inst_map.insert(make_pair(key, item));
+		}
+		ifs.close();
+		exist_old_log = true;
+	}else
+		exist_old_log = false;
+}
+
 int main(int argc, char * argv[])
 {
 	// Initialize pin
@@ -175,9 +244,9 @@ int main(int argc, char * argv[])
 	else
 		path_end++;
 	
-	sprintf(application_name, "/tmp/%s.indirect.log", path_end);
-	OutFile.open(application_name);
+	sprintf(application_name, "/home/wangzhe/spec_profile/%s.indirect.log", path_end);
 	
+	read_old_log();
 	// Register Instruction to be called to instrument instructions
 	INS_AddInstrumentFunction(Instruction, 0);
 
@@ -186,7 +255,6 @@ int main(int argc, char * argv[])
 
 	// find all image and it's range
 	IMG_AddInstrumentFunction(ImageLoad, 0);
-
 	// Start the program, never returns
 	PIN_StartProgram();
 
